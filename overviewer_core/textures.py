@@ -1678,12 +1678,14 @@ block(blockid=41, top_image="assets/minecraft/textures/block/gold_block.png")
 # block of iron
 block(blockid=42, top_image="assets/minecraft/textures/block/iron_block.png")
 
-# double slabs and slabs
+# double and slabs
 # these wooden slabs are unobtainable without cheating, they are still
 # here because lots of pre-1.3 worlds use this blocks, add prismarine slabs
 @material(blockid=[43, 44, 181, 182, 204, 205] + list(range(11340,11359)), data=list(range(16)),
           transparent=[44, 182, 205] + list(range(11340,11359)), solid=True)
 def slabs(self, blockid, data):
+    ##### WYNNCRAFT
+    isVanta = False
     if blockid == 44 or blockid == 182: 
         texture = data & 7
     else: # data > 8 are special double slabs
@@ -1701,7 +1703,9 @@ def slabs(self, blockid, data):
         elif texture== 3: # cobblestone slab
             top = side = self.load_image_texture("assets/minecraft/textures/block/cobblestone.png")
         elif texture== 4: # brick
-            top = side = self.load_image_texture("assets/minecraft/textures/block/bricks.png")
+            ##### WYNNCRAFT - use dirt not brick
+            top = side = self.load_image_texture("assets/minecraft/textures/block/dirt.png")
+            isVanta = True
         elif texture== 5: # stone brick
             top = side = self.load_image_texture("assets/minecraft/textures/block/stone_bricks.png")
         elif texture== 6: # nether brick slab
@@ -1775,6 +1779,10 @@ def slabs(self, blockid, data):
 
     if blockid == 43 or blockid == 181 or blockid == 204: # double slab
         return self.build_block(top, side)
+    
+    #### WYNNCRAFT
+    if isVanta:
+        top = side = self.load_image_texture("assets/minecraft/textures/block_variants/vanta_block.png")
     
     return self.build_slab_block(top, side, data & 8 == 8);
 
