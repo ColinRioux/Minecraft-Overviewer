@@ -1778,11 +1778,10 @@ def slabs(self, blockid, data):
         side = self.load_image_texture("assets/minecraft/textures/block/smooth_stone_slab_side.png").copy()
 
     if blockid == 43 or blockid == 181 or blockid == 204: # double slab
+        #### WYNNCRAFT
+        if isVanta:
+            top = side = self.load_image_texture("assets/minecraft/textures/block_variants/vanta_block.png")
         return self.build_block(top, side)
-    
-    #### WYNNCRAFT
-    if isVanta:
-        top = side = self.load_image_texture("assets/minecraft/textures/block_variants/vanta_block.png")
     
     return self.build_slab_block(top, side, data & 8 == 8);
 
