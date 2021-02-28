@@ -121,7 +121,7 @@ class Textures(object):
     ## Helpers for opening textures
     ##
     
-    def find_file(self, filename, mode="rb", verbose=False):
+    def find_file(self, filename, mode="rb", verbose=True):
         """Searches for the given file and returns an open handle to it.
         This searches the following locations in this order:
         
