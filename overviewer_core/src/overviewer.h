@@ -37,7 +37,7 @@
 #include <stdint.h>
 
 /* Python PIL, and numpy headers */
-#include <Imaging.h>
+#include "Imaging.h"
 #include <Python.h>
 #include <numpy/arrayobject.h>
 /* Fix Pillow on mingw-w64 which includes windows.h in Imaging.h */
