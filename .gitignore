@@ -2,6 +2,7 @@
 MANIFEST
 build/
 dist/
+docs/_build/
 Minecraft_Overviewer.egg-info
 terrain.png
 cachedir*
@@ -20,10 +21,10 @@ ImPlatform.h
 Imaging.h
 
 # various forms of compiled c_overviewer extensions
-overviewer_core/c_overviewer.so
-overviewer_core/c_overviewer.pyd
-overviewer_core/c_overviewer_d.pyd
-overviewer_core/c_overviewer.dylib
+overviewer_core/c_overviewer*.so
+overviewer_core/c_overviewer*.pyd
+overviewer_core/c_overviewer_d*.pyd
+overviewer_core/c_overviewer*.dylib
 
 # generated files
 overviewer_core/overviewer_version.py
@@ -35,3 +36,11 @@ overviewer_core/src/primitives.h
 #Script files, as users may want their own scripts.
 *.sh
 *.bat
+
+# PyCharm directory
+.idea
+/.vs/Minecraft-Overviewer/v15/.suo
+/.vs
+.vscode
+ImagingUtils.h
+venv/
