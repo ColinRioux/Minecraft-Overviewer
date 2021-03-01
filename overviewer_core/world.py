@@ -1305,6 +1305,7 @@ class RegionSet(object):
         num_palette_entries = len(section['Palette'])
         translated_blocks = numpy.zeros((num_palette_entries,), dtype=numpy.uint16) # block IDs
         translated_data = numpy.zeros((num_palette_entries,), dtype=numpy.uint8) # block data
+        print("COLIN ", section['Palette'])
         for i in range(num_palette_entries):
             key = section['Palette'][i]
             try:
