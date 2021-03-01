@@ -116,7 +116,7 @@ def parseBucketChunks((bucket, rset, filters)):
     for b in bucket:
         try:
             data = rset.get_chunk(b[0],b[1])
-            for poi in itertools.chain(data['TileEntities'], data['Entities']):
+            for poi in itertools.chain(data.get('TileEntities', []), data.get('Entities', [])):
                 if poi['id'] == 'Sign' or poi['id'] == 'minecraft:sign':
                     poi = signWrangler(poi)
                 for name, filter_function in filters:
@@ -127,6 +127,8 @@ def parseBucketChunks((bucket, rset, filters)):
                         markers[name].append(d)
         except nbt.CorruptChunkError:
             logging.warning("Ignoring POIs in corrupt chunk %d,%d", b[0], b[1])
+        except world.ChunkDoesntExist:
+            pass
 
         # Perhaps only on verbose ?
         i = i + 1
@@ -165,7 +167,7 @@ def handleEntities(rset, config, config_path, filters, markers):
         for (x, z, mtime) in rset.iterate_chunks():
             try:
                 data = rset.get_chunk(x, z)
-                for poi in itertools.chain(data['TileEntities'], data['Entities']):
+                for poi in itertools.chain(data.get('TileEntities', []), data.get('Entities', [])):
                     if poi['id'] == 'Sign' or poi['id'] == 'minecraft:sign': # kill me
                         poi = signWrangler(poi)
                     for name, __, filter_function, __, __, __ in filters:
@@ -175,6 +177,10 @@ def handleEntities(rset, config, config_path, filters, markers):
                             markers[name]['raw'].append(d)
             except nbt.CorruptChunkError:
                 logging.warning("Ignoring POIs in corrupt chunk %d,%d", x,z)
+            except world.ChunkDoesntExist:
+                # iterate_chunks() doesn't inspect chunks and filter out
+                # placeholder ones. It's okay for this chunk to not exist.
+                pass
   
     else:
         buckets = [[] for i in range(numbuckets)];
@@ -342,7 +348,7 @@ def handlePlayers(worldpath, filters, markers):
             else:
                 dimension = 0
 
-            if data['Dimension'] == dimension:
+            if data.get('Dimension', 0) == dimension:
                 result = filter_function(data)
                 if result:
                     d = create_marker_from_filter_result(data, result)
