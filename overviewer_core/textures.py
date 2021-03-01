@@ -1667,7 +1667,7 @@ def slabs(self, blockid, data):
             top = side = self.load_image_texture("assets/minecraft/textures/blocks/cobblestone.png")
         elif texture== 4: # brick
             ##### WYNNCRAFT - use dirt not brick
-            top = side = self.load_image_texture("assets/minecraft/textures/block/dirt.png")
+            top = side = self.load_image_texture("assets/minecraft/textures/blocks/dirt.png")
             isVanta = True
         elif texture== 5: # stone brick
             top = side = self.load_image_texture("assets/minecraft/textures/blocks/stonebrick.png")
