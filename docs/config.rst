@@ -694,20 +694,38 @@ Image options
 
 ``imgformat``
     This is which image format to render the tiles into. Its value should be a
-    string containing "png", "jpg", or "jpeg".
+    string containing "png", "jpg", "jpeg" or "webp".
+
+    .. note::
+        For WebP, your PIL/Pillow needs to be built with WebP support. Do
+        keep in mind that not all browsers support WebP images.
 
     **Default:** ``"png"``
 
 ``imgquality``
-    This is the image quality used when saving the tiles into the JPEG image
-    format. Its value should be an integer between 0 and 100.
+    This is the image quality used when saving the tiles into the JPEG or WebP
+    image format. Its value should be an integer between 0 and 100.
+
+    For WebP images in lossless mode, it determines how much effort is spent
+    on compressing the image.
 
     **Default:** ``95``
+
+``imglossless``
+    Determines whether a WebP image is saved in lossless or lossy mode. Has
+    no effect on other image formats.
+
+    **Default:** ``True``
 
 ``optimizeimg``
 
     .. warning::
         Using image optimizers will increase render times significantly.
+
+    .. note::
+        With the port to Python 3, the import line has changed. Prefix the
+        ``optimizeimages`` module with a period, so
+        ``from .optimizeimages import foo, bar``.
 
     This option specifies which additional tools overviewer should use to
     optimize the filesize of rendered tiles.
@@ -718,7 +736,7 @@ Image options
     the order in which they're specified::
         
         # Import the optimizers we need
-        from optimizeimages import pngnq, optipng
+        from .optimizeimages import pngnq, optipng
 
         worlds["world"] = "/path/to/world"
 

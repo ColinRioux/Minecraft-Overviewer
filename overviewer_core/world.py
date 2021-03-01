@@ -53,7 +53,7 @@ def log_other_exceptions(func):
             return func(*args)
         except ChunkDoesntExist:
             raise
-        except Exception, e:
+        except Exception as e:
             logging.exception("%s raised this exception", func.func_name)
             raise
     return newfunc
@@ -134,11 +134,12 @@ class World(object):
             if mcas:
                 # construct a regionset object for this
                 rel = os.path.relpath(root, self.worlddir)
-                rset = RegionSet(root, rel)
-                if root == os.path.join(self.worlddir, "region"):
-                    self.regionsets.insert(0, rset)
-                else:
-                    self.regionsets.append(rset)
+                if rel != "poi":
+                    rset = RegionSet(root, rel)
+                    if root == os.path.join(self.worlddir, "region"):
+                        self.regionsets.insert(0, rset)
+                    else:
+                        self.regionsets.append(rset)
 
         # TODO move a lot of the following code into the RegionSet
 
@@ -194,17 +195,23 @@ class World(object):
         spawnY = data['SpawnY']
         disp_spawnZ = spawnZ = data['SpawnZ']
 
-        ## The chunk that holds the spawn location
-        chunkX = spawnX//16
-        chunkZ = spawnZ//16
-
         ## clamp spawnY to a sane value, in-chunk value
         if spawnY < 0:
             spawnY = 0
         if spawnY > 255:
             spawnY = 255
+            
+        ## The chunk that holds the spawn location
+        chunkX = spawnX//16
+        chunkY = spawnY//16
+        chunkZ = spawnZ//16
+        
+        ## The block for spawn *within* the chunk
+        inChunkX = spawnX % 16
+        inChunkZ = spawnZ % 16
+        inChunkY = spawnY % 16
 
-        # Open up the chunk that the spawn is in
+        ## Open up the chunk that the spawn is in
         regionset = self.get_regionset(None)
         if not regionset:
             return None
@@ -212,27 +219,22 @@ class World(object):
             chunk = regionset.get_chunk(chunkX, chunkZ)
         except ChunkDoesntExist:
             return (spawnX, spawnY, spawnZ)
-
-        def getBlock(y):
-            "This is stupid and slow but I don't care"
-            targetSection = spawnY//16
-            for section in chunk['Sections']:
-                if section['Y'] == targetSection:
-                    blockArray = section['Blocks']
-                    return blockArray[inChunkX, inChunkZ, y % 16]
-            return 0
-
-
-
-        ## The block for spawn *within* the chunk
-        inChunkX = spawnX - (chunkX*16)
-        inChunkZ = spawnZ - (chunkZ*16)
-
-        ## find the first air block
-        while (getBlock(spawnY) != 0) and spawnY < 256:
-            spawnY += 1
-
-        return spawnX, spawnY, spawnZ
+        
+        ## Check for first air block (0) above spawn
+        
+        # Get only the spawn section and the ones above, ordered from low to high
+        spawnChunkSections = sorted(chunk['Sections'], key=lambda sec: sec['Y'])[chunkY:]
+        for section in spawnChunkSections:
+            # First section, start at registered local y
+            for y in range(inChunkY, 16):
+                # If air, return absolute coords
+                if section['Blocks'][inChunkX, inChunkZ, y] == 0:
+                    return spawnX, spawnY, spawnZ
+                # Keep track of the absolute Y
+                spawnY += 1
+            # Next section, start at local 0
+            inChunkY = 0
+        return spawnX, 256, spawnZ
 
 class RegionSet(object):
     """This object is the gateway to a particular Minecraft dimension within a
@@ -271,7 +273,7 @@ class RegionSet(object):
             # this is the main world
             self.type = None
         else:
-            logging.warning("Unkown region type in %r", regiondir)
+            logging.warning("Unknown region type in %r", regiondir)
             self.type = "__unknown"
 
         logging.debug("Scanning regions.  Type is %r" % self.type)
@@ -414,6 +416,7 @@ class RegionSet(object):
             'minecraft:bricks': (45, 0),
             'minecraft:tnt': (46, 0),
             'minecraft:bookshelf': (47, 0),
+            'minecraft:mossy_cobblestone': (48, 0),
             'minecraft:obsidian': (49, 0),
             'minecraft:wall_torch': (50, 0),
             'minecraft:torch': (50, 5),
@@ -515,8 +518,8 @@ class RegionSet(object):
             'minecraft:jungle_stairs': (136, 0),
             'minecraft:command_block': (137, 0),
             'minecraft:beacon': (138, 0),
-            'minecraft:mossy_cobblestone': (139, 16),
             'minecraft:cobblestone_wall': (139, 0),
+            'minecraft:mossy_cobblestone_wall': (139, 1),
             'minecraft:flower_pot': (140, 0),
             'minecraft:potted_poppy': (140, 0),  # Pots not rendering
             'minecraft:potted_blue_orchid': (140, 0),
@@ -542,12 +545,12 @@ class RegionSet(object):
             'minecraft:carrots': (141, 0),
             'minecraft:potatoes': (142, 0),
             'minecraft:oak_button': (143, 0),
-            'minecraft:skeleton_wall_skull': (144, 0), #not rendering
-            'minecraft:wither_skeleton_wall_skull': (144, 1), #not rendering
-            'minecraft:zombie_wall_head': (144, 2), #not rendering
-            'minecraft:player_wall_head': (144, 3), #not rendering
-            'minecraft:creeper_wall_head': (144, 4), #not rendering
-            'minecraft:dragon_wall_head': (144, 5), #not rendering
+            'minecraft:skeleton_wall_skull': (144, 0),  # not rendering
+            'minecraft:wither_skeleton_wall_skull': (144, 1),   # not rendering
+            'minecraft:zombie_wall_head': (144, 2),     # not rendering
+            'minecraft:player_wall_head': (144, 3),     # not rendering
+            'minecraft:creeper_wall_head': (144, 4),    # not rendering
+            'minecraft:dragon_wall_head': (144, 5),     # not rendering
             'minecraft:anvil': (145, 0),
             'minecraft:chipped_anvil': (145, 4),
             'minecraft:damaged_anvil': (145, 8),
@@ -560,7 +563,7 @@ class RegionSet(object):
             'minecraft:nether_quartz_ore': (153, 0),
             'minecraft:hopper': (154, 0),
             'minecraft:quartz_block': (155, 0),
-            'minecraft:smooth_quartz': (155, 0), # Only bottom texture is different
+            'minecraft:smooth_quartz': (155, 0),    # Only bottom texture is different
             'minecraft:quartz_pillar': (155, 2),
             'minecraft:chiseled_quartz_block': (155, 1),
             'minecraft:quartz_stairs': (156, 0),
@@ -621,7 +624,10 @@ class RegionSet(object):
             'minecraft:standing_banner': (176, 0),
             'minecraft:wall_banner': (177, 0),
             'minecraft:red_sandstone': (179, 0),
+            'minecraft:cut_red_sandstone': (179, 2),
+            'minecraft:chiseled_red_sandstone': (179, 3),
             'minecraft:red_sandstone_stairs': (180, 0),
+            'minecraft:red_sandstone_slab': (182,0),
             'minecraft:spruce_fence_gate': (183, 0),
             'minecraft:birch_fence_gate': (184, 0),
             'minecraft:jungle_fence_gate': (185, 0),
@@ -637,7 +643,7 @@ class RegionSet(object):
             'minecraft:jungle_door': (195, 0),
             'minecraft:acacia_door': (196, 0),
             'minecraft:dark_oak_door': (197, 0),
-            'minecraft:end_rod': (198, 0), #not rendering
+            'minecraft:end_rod': (198, 0),  # not rendering
             'minecraft:chorus_plant': (199, 0),
             'minecraft:chorus_flower': (200, 0),
             'minecraft:purpur_block': (201, 0),
@@ -665,7 +671,7 @@ class RegionSet(object):
             'minecraft:gray_shulker_box': (226, 0),
             'minecraft:light_gray_shulker_box': (227, 0),
             'minecraft:cyan_shulker_box': (228, 0),
-            'minecraft:shulker_box': (229, 0), #wrong color
+            'minecraft:shulker_box': (229, 0),  # wrong color
             'minecraft:purple_shulker_box': (229, 0),
             'minecraft:blue_shulker_box': (230, 0),
             'minecraft:brown_shulker_box': (231, 0),
@@ -691,7 +697,7 @@ class RegionSet(object):
 
             'minecraft:structure_block': (255, 0),
 
-            'minecraft:armor_stand': (416, 0), #not rendering
+            'minecraft:armor_stand': (416, 0),  # not rendering
 
             # The following blocks are underwater and are not yet rendered.
             # To avoid spurious warnings, we'll treat them as water for now.
@@ -717,7 +723,7 @@ class RegionSet(object):
             'minecraft:tube_coral_fan': (8, 0),
             'minecraft:tube_coral_wall_fan': (8, 0),
 
-            #New blocks
+            # New blocks
             'minecraft:carved_pumpkin': (11300, 0),
             'minecraft:spruce_pressure_plate': (11301, 0),
             'minecraft:birch_pressure_plate': (11302, 0),
@@ -767,6 +773,32 @@ class RegionSet(object):
             'minecraft:jungle_trapdoor': (11334, 0),
             'minecraft:acacia_trapdoor': (11335, 0),
             'minecraft:dark_oak_trapdoor': (11336, 0),
+            'minecraft:petrified_oak_slab': (126, 0),
+            'minecraft:prismarine_stairs': (11337, 0),
+            'minecraft:dark_prismarine_stairs': (11338, 0),
+            'minecraft:prismarine_brick_stairs': (11339,0),
+            'minecraft:prismarine_slab': (11340, 0),
+            'minecraft:dark_prismarine_slab': (11341, 0),
+            'minecraft:prismarine_brick_slab': (11342, 0),
+            "minecraft:andesite_slab": (11343, 0),
+            "minecraft:diorite_slab": (11344, 0),
+            "minecraft:granite_slab": (11345, 0),
+            "minecraft:polished_andesite_slab": (11346, 0),
+            "minecraft:polished_diorite_slab": (11347, 0),
+            "minecraft:polished_granite_slab": (11348, 0),
+            "minecraft:red_nether_brick_slab": (11349, 0),
+            "minecraft:smooth_sandstone_slab": (11350, 0),
+            "minecraft:cut_sandstone_slab": (11351, 0),
+            "minecraft:smooth_red_sandstone_slab": (11352, 0),
+            "minecraft:cut_red_sandstone_slab": (11353, 0),
+            "minecraft:end_stone_brick_slab": (11354, 0),
+            "minecraft:mossy_cobblestone_slab": (11355, 0),
+            "minecraft:mossy_stone_brick_slab": (11356, 0),
+            "minecraft:smooth_quartz_slab": (11357, 0),
+            "minecraft:smooth_stone_slab": (11358, 0),
+            "minecraft:fletching_table": (11359, 0),
+            "minecraft:cartography_table": (11360, 0),
+            "minecraft:smithing_table": (11361, 0),
         }
 
         colors = [   'white', 'orange', 'magenta', 'light_blue',
@@ -792,6 +824,22 @@ class RegionSet(object):
         return "<RegionSet regiondir=%r>" % self.regiondir
 
     def _get_block(self, palette_entry):
+        wood_slabs = ('minecraft:oak_slab','minecraft:spruce_slab','minecraft:birch_slab','minecraft:jungle_slab',
+                        'minecraft:acacia_slab','minecraft:dark_oak_slab','minecraft:petrified_oak_slab')
+        stone_slabs = ('minecraft:stone_slab', 'minecraft:sandstone_slab','minecraft:red_sandstone_slab',
+                        'minecraft:cobblestone_slab', 'minecraft:brick_slab','minecraft:purpur_slab',
+                        'minecraft:stone_brick_slab', 'minecraft:nether_brick_slab',
+                        'minecraft:quartz_slab', "minecraft:andesite_slab", 'minecraft:diorite_slab',
+                        'minecraft:granite_slab', 'minecraft:polished_andesite_slab',
+                        'minecraft:polished_diorite_slab','minecraft:polished_granite_slab',
+                        'minecraft:red_nether_brick_slab','minecraft:smooth_sandstone_slab',
+                        'minecraft:cut_sandstone_slab','minecraft:smooth_red_sandstone_slab',
+                        'minecraft:cut_red_sandstone_slab','minecraft:end_stone_brick_slab',
+                        'minecraft:mossy_cobblestone_slab','minecraft:mossy_stone_brick_slab',
+                        'minecraft:smooth_quartz_slab','minecraft:smooth_stone_slab'
+                         )
+        prismarine_slabs = ('minecraft:prismarine_slab','minecraft:dark_prismarine_slab','minecraft:prismarine_brick_slab')
+
         key = palette_entry['Name']
         (block, data) = self._blockmap[key]
         if key in ['minecraft:redstone_ore', 'minecraft:redstone_lamp']:
@@ -818,16 +866,95 @@ class RegionSet(object):
         elif key == 'minecraft:redstone_wire':
             data = palette_entry['Properties']['power']
         elif key == 'minecraft:grass_block':
-            if palette_entry['Properties']['snowy']:
-                data = 0x10
+            if palette_entry['Properties']['snowy'] == 'true':
+                data |= 0x10
         elif key in ('minecraft:sunflower', 'minecraft:lilac', 'minecraft:tall_grass', 'minecraft:large_fern', 'minecraft:rose_bush', 'minecraft:peony'):
             if palette_entry['Properties']['half'] == 'upper':
                 data |= 0x08
-        elif key == 'minecraft_wheat':
-            data = int(palette_entry['Properties']['age'])
-        elif key in ['minecraft:stone_slab', 'minecraft:sandstone_slab', 'minecraft:oak_slab', 'minecraft:cobblestone_slab', 'minecraft:brick_slab', 'minecraft:stone_brick_slab', 'minecraft:nether_brick_slab', 'minecraft:quartz_slab']:
+        elif key in wood_slabs + stone_slabs + prismarine_slabs:
+        # handle double slabs 
             if palette_entry['Properties']['type'] == 'top':
-                data += 8
+                data |= 0x08
+            elif palette_entry['Properties']['type'] == 'double':
+                if key in wood_slabs:
+                    block = 125         # block_double_wooden_slab
+                elif key in stone_slabs:
+                    if key == 'minecraft:stone_brick_slab':
+                        block = 98
+                    elif key == 'minecraft:stone_slab':
+                        block = 43      # block_double_stone_slab
+                    elif key == 'minecraft:cobblestone_slab':
+                        block = 4       # cobblestone
+                    elif key == 'minecraft:sandstone_slab':
+                        block = 24      # minecraft:sandstone
+                    elif key == 'minecraft:red_sandstone_slab':
+                        block = 179     # minecraft:red_sandstone
+                    elif key == 'minecraft:nether_brick_slab':
+                        block = 112     # minecraft:nether_bricks
+                    elif key == 'minecraft:quartz_slab':
+                        block = 155     # minecraft:quartz_block
+                    elif key == 'minecraft:brick_slab':
+                        block = 45      # minecraft:bricks
+                    elif key == 'minecraft:purpur_slab':
+                        block = 201     # minecraft:purpur_block
+                    elif key == 'minecraft:andesite_slab':
+                        block = 1   # minecraft:andesite
+                        data  = 5
+                    elif key == 'minecraft:diorite_slab':
+                        block = 1   # minecraft:diorite
+                        data  = 3
+                    elif key == 'minecraft:granite_slab':
+                        block = 1   # minecraft:granite
+                        data  = 1
+                    elif key == 'minecraft:polished_andesite_slab':
+                        block = 1   # minecraft: polished_andesite
+                        data  = 6
+                    elif key == 'minecraft:polished_diorite_slab':
+                        block = 1   # minecraft: polished_diorite
+                        data  = 4
+                    elif key == 'minecraft:polished_granite_slab':
+                        block = 1   # minecraft: polished_granite
+                        data  = 2
+                    elif key == 'minecraft:red_nether_brick_slab':
+                        block = 215   # minecraft: red_nether_brick
+                        data  = 0
+                    elif key == 'minecraft:smooth_sandstone_slab':
+                        block = 11314   # minecraft: smooth_sandstone
+                        data  = 0
+                    elif key == 'minecraft:cut_sandstone_slab':
+                        block = 24   # minecraft: cut_sandstone
+                        data  = 2
+                    elif key == 'minecraft:smooth_red_sandstone_slab':
+                        block = 11315   # minecraft: smooth_red_sandstone
+                        data  = 0
+                    elif key == 'minecraft:cut_red_sandstone_slab':
+                        block = 179   # minecraft: cut_red_sandstone
+                        data  = 2
+                    elif key == 'minecraft:end_stone_brick_slab':
+                        block = 206   # minecraft:end_stone_bricks
+                        data  = 0
+                    elif key == 'minecraft:mossy_cobblestone_slab':
+                        block = 48   # minecraft:mossy_cobblestone
+                        data  = 0
+                    elif key == 'minecraft:mossy_stone_brick_slab':
+                        block = 98   # minecraft:mossy_stone_bricks
+                        data  = 1
+                    elif key == 'minecraft:smooth_quartz_slab':
+                        block = 155   # minecraft:smooth_quartz
+                        data  = 0
+                    elif key == 'minecraft:smooth_stone_slab':
+                        block = 11313   # minecraft:smooth_stone
+                        data  = 0
+
+                elif key in  prismarine_slabs:
+                    block = 168         # minecraft:prismarine variants
+                    if key == 'minecraft:prismarine_slab':
+                        data = 0
+                    elif key == 'minecraft:prismarine_brick_slab':
+                        data = 1
+                    elif key == 'minecraft:dark_prismarine_slab':
+                        data = 2
+
         elif key in ['minecraft:ladder', 'minecraft:chest', 'minecraft:ender_chest', 'minecraft:trapped_chest', 'minecraft:furnace']:
             facing = palette_entry['Properties']['facing']
             data = {'north': 2, 'south': 3, 'west': 4, 'east': 5}[facing]
@@ -914,10 +1041,12 @@ class RegionSet(object):
             if p['east']  == 'true': data |= 8
         elif key.endswith('_stairs'):
             facing = palette_entry['Properties']['facing']
-            if   facing == 'south': data |= 0x60
-            elif facing == 'east':  data |= 0x30
-            elif facing == 'north': data |= 0x18
-            elif facing == 'west':  data |= 0x48
+            if   facing == 'south': data = 2
+            elif facing == 'east':  data = 0
+            elif facing == 'north': data = 3
+            elif facing == 'west':  data = 1
+            if palette_entry['Properties']['half'] == 'top':
+                data |= 0x4
         elif key.endswith('_door'):
             p = palette_entry['Properties']
             if p['hinge'] == 'left': data |= 0x10
@@ -933,7 +1062,9 @@ class RegionSet(object):
             data = {'south': 1, 'north': 0, 'east': 3, 'west': 2}[p['facing']]
             if p['open'] == 'true': data |= 0x04
             if p['half'] == 'top': data |= 0x08
-
+        elif key in ['minecraft:beetroots', 'minecraft:melon_stem', 'minecraft:wheat',
+                     'minecraft:pumpkin_stem', 'minecraft:potatoes', 'minecraft:carrots']:
+            data = palette_entry['Properties']['age']
         return (block, data)
 
     def get_type(self):
@@ -961,91 +1092,66 @@ class RegionSet(object):
         if bits_per_value < 4 or 12 < bits_per_value:
             raise nbt.CorruptChunkError()
         b = numpy.frombuffer(numpy.asarray(long_array, dtype=numpy.uint64), dtype=numpy.uint8)
+        # give room for work, later
+        b = b.astype(numpy.uint16)
         if bits_per_value == 8:
-            result = b.astype(numpy.uint16)
-        else:
-            result = []
-            i = 0
-            # We will consume the byte array in chunks equal to bits_per_value.
-            while i < len(b):
-                if bits_per_value == 4:
-                    for k in range(0, 4):
-                        result.extend([
-                             b[i + k] & 0x0f,
-                            (b[i + k] & 0xf0) >> 4,
-                            ])
-                    i += 4
-                elif bits_per_value == 5:
-                    result.extend([
-                          b[i] & 0x1f,
-                        ((b[i+1] & 0x03) << 3) | ((b[i] & 0xe0) >> 5),
-                         (b[i+1] & 0x7c) >> 2,
-                        ((b[i+2] & 0x0f) << 1) | ((b[i+1] & 0x80) >> 7),
-                        ((b[i+3] & 0x01) << 4) | ((b[i+2] & 0xf0) >> 4),
-                         (b[i+3] & 0x3e) >> 1,
-                        ((b[i+4]   & 0x07) << 2) | ((b[i+3] & 0xc0) >> 6),
-                         (b[i+4]   & 0xf8) >> 3,
-                        ])
-                    i += 5
-                elif bits_per_value == 6:
-                    result.extend([
-                          b[i] & 0x3f,
-                        ((b[i+1] & 0x0f) << 2) | ((b[i]   & 0xc0) >> 6),
-                        ((b[i+2] & 0x03) << 4) | ((b[i+1] & 0xf0) >> 4),
-                         (b[i+2] & 0xfc) >> 2,
-                         ])
-                    i += 3
-                elif bits_per_value == 7:
-                    result.extend([
-                          b[i] & 0x7f,
-                        ((b[i+1] & 0x3f) << 1) | ((b[i]   & 0x80) >> 7),
-                        ((b[i+2] & 0x1f) << 2) | ((b[i+1] & 0xc0) >> 6),
-                        ((b[i+3] & 0x0f) << 3) | ((b[i+2] & 0xe0) >> 5),
-                        ((b[i+4] & 0x07) << 4) | ((b[i+3] & 0xf0) >> 4),
-                        ((b[i+5] & 0x03) << 5) | ((b[i+4] & 0xf8) >> 3),
-                        ((b[i+6] & 0x01) << 6) | ((b[i+5] & 0xfc) >> 2),
-                         (b[i+6] & 0xfc) >> 1,
-                         ])
-                    i += 7
-                elif bits_per_value == 9:
-                    result.extend([
-                        ((b[i+1] & 0x01) << 8) | b[i],
-                        ((b[i+2] & 0x03) << 7) | ((b[i+1] & 0xfe) >> 1),
-                        ((b[i+3] & 0x07) << 6) | ((b[i+2] & 0xfc) >> 2),
-                        ((b[i+4] & 0x0f) << 5) | ((b[i+3] & 0xf8) >> 3),
-                        ((b[i+5] & 0x1f) << 4) | ((b[i+4] & 0xf0) >> 4),
-                        ((b[i+6] & 0x3f) << 3) | ((b[i+5] & 0xe0) >> 5),
-                        ((b[i+7] & 0x7f) << 2) | ((b[i+6] & 0xc0) >> 6),
-                         (b[i+8] << 1) | ((b[i+7] & 0x80) >> 7),
-                        ])
-                    i += 9
-                elif bits_per_value == 10:
-                    result.extend([
-                        ((b[i+1] & 0x03) << 8) |   b[i],
-                        ((b[i+2] & 0x0f) << 6) | ((b[i+1] & 0xfc) >> 2),
-                        ((b[i+3] & 0x3f) << 4) | ((b[i+2] & 0xf0) >> 4),
-                         (b[i+4] << 2)         | ((b[i+3] & 0xc0) >> 6),
-                        ])
-                    i += 5
-                elif bits_per_value == 11:
-                    result.extend([
-                        ((b[i+1] & 0x07) << 8) |   b[i],
-                        ((b[i+2] & 0x3f) << 5) | ((b[i+1] & 0xf8) >> 3),
-                        ((b[i+4] & 0x01) << 10)| (b[i+3] << 2) | ((b[i+2] & 0xc0) >> 6),
-                        ((b[i+5] & 0x0f) << 7) | ((b[i+4] & 0xfe) >> 1),
-                        ((b[i+6] & 0x7f) << 4) | ((b[i+5] & 0xf0) >> 4),
-                        ((b[i+8] & 0x03) << 9) | (b[i+7] << 1) | ((b[i+6] & 0x80) >> 7),
-                        ((b[i+9] & 0x1f) << 2) | ((b[i+8] & 0xfc) >> 2),
-                         (b[i+10]        << 3) | ((b[i+9] & 0xe0) >> 5),
-                       ])
-                    i += 11
-                elif bits_per_value == 12:
-                    result.extend([
-                        ((b[i+1] & 0x0f) << 8) |   b[i],
-                         (b[i+2]         << 4) | ((b[i+1] & 0xf0) >> 4),
-                        ])
-                    i += 3
-            result = numpy.asarray(result, numpy.uint16)
+            return b
+
+        result = numpy.zeros((n,), dtype=numpy.uint16)
+        if bits_per_value == 4:
+            result[0::2] =  b & 0x0f
+            result[1::2] = (b & 0xf0) >> 4
+        elif bits_per_value == 5:
+            result[0::8] =   b[0::5] & 0x1f
+            result[1::8] = ((b[1::5] & 0x03) << 3) | ((b[0::5] & 0xe0) >> 5)
+            result[2::8] =  (b[1::5] & 0x7c) >> 2
+            result[3::8] = ((b[2::5] & 0x0f) << 1) | ((b[1::5] & 0x80) >> 7)
+            result[4::8] = ((b[3::5] & 0x01) << 4) | ((b[2::5] & 0xf0) >> 4)
+            result[5::8] =  (b[3::5] & 0x3e) >> 1
+            result[6::8] = ((b[4::5] & 0x07) << 2) | ((b[3::5] & 0xc0) >> 6)
+            result[7::8] =  (b[4::5] & 0xf8) >> 3
+        elif bits_per_value == 6:
+            result[0::4] =   b[0::3] & 0x3f
+            result[1::4] = ((b[1::3] & 0x0f) << 2) | ((b[0::3] & 0xc0) >> 6)
+            result[2::4] = ((b[2::3] & 0x03) << 4) | ((b[1::3] & 0xf0) >> 4)
+            result[3::4] =  (b[2::3] & 0xfc) >> 2
+        elif bits_per_value == 7:
+            result[0::8] =   b[0::7] & 0x7f
+            result[1::8] = ((b[1::7] & 0x3f) << 1) | ((b[0::7] & 0x80) >> 7)
+            result[2::8] = ((b[2::7] & 0x1f) << 2) | ((b[1::7] & 0xc0) >> 6)
+            result[3::8] = ((b[3::7] & 0x0f) << 3) | ((b[2::7] & 0xe0) >> 5)
+            result[4::8] = ((b[4::7] & 0x07) << 4) | ((b[3::7] & 0xf0) >> 4)
+            result[5::8] = ((b[5::7] & 0x03) << 5) | ((b[4::7] & 0xf8) >> 3)
+            result[6::8] = ((b[6::7] & 0x01) << 6) | ((b[5::7] & 0xfc) >> 2)
+            result[7::8] =  (b[6::7] & 0xfc) >> 1
+        # bits_per_value == 8 is handled above
+        elif bits_per_value == 9:
+            result[0::8] = ((b[1::9] & 0x01) << 8) |   b[0::9]
+            result[1::8] = ((b[2::9] & 0x03) << 7) | ((b[1::9] & 0xfe) >> 1)
+            result[2::8] = ((b[3::9] & 0x07) << 6) | ((b[2::9] & 0xfc) >> 2)
+            result[3::8] = ((b[4::9] & 0x0f) << 5) | ((b[3::9] & 0xf8) >> 3)
+            result[4::8] = ((b[5::9] & 0x1f) << 4) | ((b[4::9] & 0xf0) >> 4)
+            result[5::8] = ((b[6::9] & 0x3f) << 3) | ((b[5::9] & 0xe0) >> 5)
+            result[6::8] = ((b[7::9] & 0x7f) << 2) | ((b[6::9] & 0xc0) >> 6)
+            result[7::8] = ( b[8::9]         << 1) | ((b[7::9] & 0x80) >> 7)
+        elif bits_per_value == 10:
+            result[0::4] = ((b[1::5] & 0x03) << 8) |   b[0::5]
+            result[1::4] = ((b[2::5] & 0x0f) << 6) | ((b[1::5] & 0xfc) >> 2)
+            result[2::4] = ((b[3::5] & 0x3f) << 4) | ((b[2::5] & 0xf0) >> 4)
+            result[3::4] = ( b[4::5]         << 2) | ((b[3::5] & 0xc0) >> 6)
+        elif bits_per_value == 11:
+            result[0::8] = ((b[ 1::11] & 0x07) << 8 ) |   b[ 0::11]
+            result[1::8] = ((b[ 2::11] & 0x3f) << 5 ) | ((b[ 1::11] & 0xf8) >> 3 )
+            result[2::8] = ((b[ 4::11] & 0x01) << 10) | ( b[ 3::11]         << 2 ) | ((b[ 2::11] & 0xc0) >> 6 )
+            result[3::8] = ((b[ 5::11] & 0x0f) << 7 ) | ((b[ 4::11] & 0xfe) >> 1 )
+            result[4::8] = ((b[ 6::11] & 0x7f) << 4 ) | ((b[ 5::11] & 0xf0) >> 4 )
+            result[5::8] = ((b[ 8::11] & 0x03) << 9 ) | ( b[ 7::11]         << 1 ) | ((b[ 6::11] & 0x80) >> 7 )
+            result[6::8] = ((b[ 9::11] & 0x1f) << 2 ) | ((b[ 8::11] & 0xfc) >> 2 )
+            result[7::8] = ( b[10::11]         << 3 ) | ((b[ 9::11] & 0xe0) >> 5 )
+        elif bits_per_value == 12:
+            result[0::2] = ((b[1::3] & 0x0f) << 8) |   b[0::3]
+            result[1::2] = ( b[2::3]         << 4) | ((b[1::3] & 0xf0) >> 4)
+
         return result
 
     def _get_blockdata_v113(self, section, unrecognized_block_types):
@@ -1155,7 +1261,7 @@ class RegionSet(object):
             try:
                 region = self._get_regionobj(regionfile)
                 data = region.load_chunk(x, z)
-            except nbt.CorruptionError, e:
+            except nbt.CorruptionError as e:
                 tries -= 1
                 if tries > 0:
                     # Flush the region cache to possibly read a new region file
@@ -1201,19 +1307,22 @@ class RegionSet(object):
         # Empty is self-explanatory, and liquid_carved and carved seem to correspond
         # to SkyLight not being calculated, which results in mostly-black chunks,
         # so we'll just pretend they aren't there.
-        if chunk_data.get("Status", "") in ("empty", "carved", "liquid_carved", "decorated"):
+        if chunk_data.get("Status", "") not in ("full", "postprocessed", "fullchunk",
+                                                "mobs_spawned", ""):
             raise ChunkDoesntExist("Chunk %s,%s doesn't exist" % (x,z))
 
-        # Turn the Biomes array into a 16x16 numpy arra
-        if 'Biomes' in chunk_data:
+        # Turn the Biomes array into a 16x16 numpy array
+        if 'Biomes' in chunk_data and len(chunk_data['Biomes']) > 0:
             biomes = chunk_data['Biomes']
-            if isinstance(biomes, str):
+            if isinstance(biomes, bytes):
                 biomes = numpy.frombuffer(biomes, dtype=numpy.uint8)
             else:
                 biomes = numpy.asarray(biomes)
             biomes = biomes.reshape((16,16))
         else:
-            # worlds converted by Jeb's program may be missing the Biomes key
+            # Worlds converted by Jeb's program may be missing the Biomes key.
+            # Additionally, 19w09a worlds have an empty array as biomes key
+            # in some cases.
             biomes = numpy.zeros((16, 16), dtype=numpy.uint8)
         chunk_data['Biomes'] = biomes
 
@@ -1223,8 +1332,11 @@ class RegionSet(object):
             # Turn the skylight array into a 16x16x16 matrix. The array comes
             # packed 2 elements per byte, so we need to expand it.
             try:
-                skylight = numpy.frombuffer(section['SkyLight'], dtype=numpy.uint8)
-                skylight = skylight.reshape((16,16,8))
+                if 'SkyLight' in section:
+                    skylight = numpy.frombuffer(section['SkyLight'], dtype=numpy.uint8)
+                    skylight = skylight.reshape((16,16,8))
+                else:   # Special case introduced with 1.14
+                    skylight = numpy.zeros((16,16,8), dtype=numpy.uint8)
                 skylight_expanded = numpy.empty((16,16,16), dtype=numpy.uint8)
                 skylight_expanded[:,:,::2] = skylight & 0x0F
                 skylight_expanded[:,:,1::2] = (skylight & 0xF0) >> 4
@@ -1232,8 +1344,11 @@ class RegionSet(object):
                 section['SkyLight'] = skylight_expanded
 
                 # Turn the BlockLight array into a 16x16x16 matrix, same as SkyLight
-                blocklight = numpy.frombuffer(section['BlockLight'], dtype=numpy.uint8)
-                blocklight = blocklight.reshape((16,16,8))
+                if 'BlockLight' in section:
+                    blocklight = numpy.frombuffer(section['BlockLight'], dtype=numpy.uint8)
+                    blocklight = blocklight.reshape((16,16,8))
+                else:   # Special case introduced with 1.14
+                    blocklight = numpy.zeros((16,16,8), dtype=numpy.uint8)
                 blocklight_expanded = numpy.empty((16,16,16), dtype=numpy.uint8)
                 blocklight_expanded[:,:,::2] = blocklight & 0x0F
                 blocklight_expanded[:,:,1::2] = (blocklight & 0xF0) >> 4
@@ -1242,8 +1357,11 @@ class RegionSet(object):
 
                 if 'Palette' in section:
                     (blocks, data) = self._get_blockdata_v113(section, unrecognized_block_types)
-                else:
+                elif 'Data' in section:
                     (blocks, data) = self._get_blockdata_v112(section)
+                else:   # Special case introduced with 1.14
+                    blocks = numpy.zeros((16,16,16), dtype=numpy.uint16)
+                    data = numpy.zeros((16,16,16), dtype=numpy.uint8)
                 (section['Blocks'], section['Data']) = (blocks, data)
 
             except ValueError:
@@ -1267,7 +1385,7 @@ class RegionSet(object):
 
         """
 
-        for (regionx, regiony), (regionfile, filemtime) in self.regionfiles.iteritems():
+        for (regionx, regiony), (regionfile, filemtime) in self.regionfiles.items():
             try:
                 mcr = self._get_regionobj(regionfile)
             except nbt.CorruptRegionError:
@@ -1283,7 +1401,7 @@ class RegionSet(object):
 
         """
 
-        for (regionx, regiony), (regionfile, filemtime) in self.regionfiles.iteritems():
+        for (regionx, regiony), (regionfile, filemtime) in self.regionfiles.items():
             """ SKIP LOADING A REGION WHICH HAS NOT BEEN MODIFIED! """
             if (filemtime < mtime):
                 continue
@@ -1577,7 +1695,6 @@ def get_worlds():
     "Returns {world # or name : level.dat information}"
     ret = {}
     save_dir = get_save_dir()
-    loc = locale.getpreferredencoding()
 
     # No dirs found - most likely not running from inside minecraft-dir
     if not save_dir is None:
@@ -1587,14 +1704,15 @@ def get_worlds():
             if not os.path.exists(world_dat): continue
             try:
                 info = nbt.load(world_dat)[1]
-                info['Data']['path'] = os.path.join(save_dir, dir).decode(loc)
+                info['Data']['path'] = os.path.join(save_dir, dir)
                 if 'LevelName' in info['Data'].keys():
                     ret[info['Data']['LevelName']] = info['Data']
             except nbt.CorruptNBTError:
-                ret[os.path.basename(world_path).decode(loc) + " (corrupt)"] = {'path': world_path.decode(loc),
-                        'LastPlayed': 0,
-                        'Time': 0,
-                        'IsCorrupt': True}
+                ret[os.path.basename(world_path) + " (corrupt)"] = {
+                    'path': world_path,
+                    'LastPlayed': 0,
+                    'Time': 0,
+                    'IsCorrupt': True}
 
 
     for dir in os.listdir("."):
@@ -1603,11 +1721,11 @@ def get_worlds():
         world_path = os.path.join(".", dir)
         try:
             info = nbt.load(world_dat)[1]
-            info['Data']['path'] = world_path.decode(loc)
+            info['Data']['path'] = world_path
             if 'LevelName' in info['Data'].keys():
                 ret[info['Data']['LevelName']] = info['Data']
         except nbt.CorruptNBTError:
-            ret[os.path.basename(world_path).decode(loc) + " (corrupt)"] = {'path': world_path.decode(loc),
+            ret[os.path.basename(world_path) + " (corrupt)"] = {'path': world_path,
                     'LastPlayed': 0,
                     'Time': 0,
                     'IsCorrupt': True}

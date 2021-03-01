@@ -16,6 +16,8 @@
  */
 
 #include "../overviewer.h"
+#include "../mc_id.h"
+#include "../block_class.h"
 #include "lighting.h"
 #include <math.h>
 
@@ -25,7 +27,7 @@ static void
 calculate_light_color(void *data,
                       unsigned char skylight, unsigned char blocklight,
                       unsigned char *r, unsigned char *g, unsigned char *b) {
-    unsigned char v = 255 * powf(0.8f, 15.0 - MAX(blocklight, skylight));
+    unsigned char v = 255 * powf(0.8f, 15.0 - OV_MAX(blocklight, skylight));
     *r = v;
     *g = v;
     *b = v;
@@ -40,14 +42,14 @@ calculate_light_color_fancy(void *data,
     unsigned int index;
     PyObject *color;
     
-    blocklight = MAX(blocklight, skylight);
+    blocklight = OV_MAX(blocklight, skylight);
     
     index = skylight + blocklight * 16;
     color = PySequence_GetItem(mode->lightcolor, index);
     
-    *r = PyInt_AsLong(PyTuple_GET_ITEM(color, 0));
-    *g = PyInt_AsLong(PyTuple_GET_ITEM(color, 1));
-    *b = PyInt_AsLong(PyTuple_GET_ITEM(color, 2));
+    *r = PyLong_AsLong(PyTuple_GET_ITEM(color, 0));
+    *g = PyLong_AsLong(PyTuple_GET_ITEM(color, 1));
+    *b = PyLong_AsLong(PyTuple_GET_ITEM(color, 2));
     
     Py_DECREF(color);
 }
@@ -60,7 +62,7 @@ static void
 calculate_light_color_night(void *data,
                             unsigned char skylight, unsigned char blocklight,
                             unsigned char *r, unsigned char *g, unsigned char *b) {
-    unsigned char v = 255 * powf(0.8f, 15.0 - MAX(blocklight, skylight - 11));
+    unsigned char v = 255 * powf(0.8f, 15.0 - OV_MAX(blocklight, skylight - 11));
     *r = v;
     *g = v;
     *b = v;
@@ -78,9 +80,9 @@ calculate_light_color_fancy_night(void *data,
     index = skylight + blocklight * 16;
     color = PySequence_GetItem(mode->lightcolor, index);
     
-    *r = PyInt_AsLong(PyTuple_GET_ITEM(color, 0));
-    *g = PyInt_AsLong(PyTuple_GET_ITEM(color, 1));
-    *b = PyInt_AsLong(PyTuple_GET_ITEM(color, 2));
+    *r = PyLong_AsLong(PyTuple_GET_ITEM(color, 0));
+    *g = PyLong_AsLong(PyTuple_GET_ITEM(color, 1));
+    *b = PyLong_AsLong(PyTuple_GET_ITEM(color, 2));
     
     Py_DECREF(color);
 }
@@ -100,7 +102,8 @@ estimate_blocklevel(RenderPrimitiveLighting *self, RenderState *state,
                          int x, int y, int z, int *authoratative) {
 
     /* placeholders for later data arrays, coordinates */
-    unsigned char block, blocklevel;
+    unsigned short block;
+    unsigned char blocklevel;
     unsigned int average_count = 0, average_gather = 0, coeff = 0;
 
     /* defaults to "guess" until told otherwise */
@@ -138,7 +141,7 @@ estimate_blocklevel(RenderPrimitiveLighting *self, RenderState *state,
     blocklevel = get_data(state, BLOCKLIGHT, x, y, z);
     
     /* no longer a guess */
-    if (!(block == 44 || block == 53 || block == 67 || block == 108 || block == 109 || block == 180 || block == 182 || block == 205) && authoratative) {
+    if (!block_class_is_subset(block, block_class_alt_height, block_class_alt_height_len) && authoratative) {
         *authoratative = 1;
     }
     
@@ -151,7 +154,8 @@ get_lighting_color(RenderPrimitiveLighting *self, RenderState *state,
                    unsigned char *r, unsigned char *g, unsigned char *b) {
 
     /* placeholders for later data arrays, coordinates */
-    unsigned char block, skylevel, blocklevel;
+    unsigned short block;
+    unsigned char skylevel, blocklevel;
     
     block = get_data(state, BLOCKS, x, y, z);
     skylevel = get_data(state, SKYLIGHT, x, y, z);
@@ -159,9 +163,7 @@ get_lighting_color(RenderPrimitiveLighting *self, RenderState *state,
 
     /* special half-step handling, stairs handling */
     /* Anvil also needs to be here, blockid 145 */
-    if (block == 44 || block == 53 || block == 67 || block == 108 || block == 109 || block == 114 ||
-        block == 128 || block == 134 || block == 135 || block == 136 || block == 145 || block == 156 ||
-        block == 163 || block == 164 || block == 180 || block == 182 || block == 203 || block == 205) {
+    if ( block_class_is_subset(block, block_class_alt_height, block_class_alt_height_len) || block == block_anvil) {
         unsigned int upper_block;
         
         /* stairs and half-blocks take the skylevel from the upper block if it's transparent */
@@ -170,10 +172,7 @@ get_lighting_color(RenderPrimitiveLighting *self, RenderState *state,
         do {
             upper_counter++; 
             upper_block = get_data(state, BLOCKS, x, y + upper_counter, z);
-        } while (upper_block == 44 || upper_block == 53 || upper_block == 67 || upper_block == 108 ||
-                 upper_block == 109 || upper_block == 114 || upper_block == 128 || upper_block == 134 ||
-                 upper_block == 135 || upper_block == 136 || upper_block == 156 || upper_block == 163 ||
-                 upper_block == 164 || upper_block == 180 || upper_block == 182 || upper_block == 203 || upper_block == 205);
+        } while (block_class_is_subset(upper_block, block_class_alt_height, block_class_alt_height_len));
         if (is_transparent(upper_block)) {
             skylevel = get_data(state, SKYLIGHT, x, y + upper_counter, z);
         } else {
@@ -186,7 +185,7 @@ get_lighting_color(RenderPrimitiveLighting *self, RenderState *state,
 
     }
     
-    if (block == 10 || block == 11) {
+    if (block_class_is_subset(block, (mc_block_t[]){block_flowing_lava,block_lava}, 2)) {
         /* lava blocks should always be lit! */
         *r = 255;
         *g = 255;
@@ -194,7 +193,7 @@ get_lighting_color(RenderPrimitiveLighting *self, RenderState *state,
         return;
     }
     
-    self->calculate_light_color(self, MIN(skylevel, 15), MIN(blocklevel, 15), r, g, b);
+    self->calculate_light_color(self, OV_MIN(skylevel, 15), OV_MIN(blocklevel, 15), r, g, b);
 }
 
 /* does per-face occlusion checking for do_shading_with_mask */
@@ -305,7 +304,7 @@ lighting_draw(void *data, RenderState *state, PyObject *src, PyObject *mask, PyO
     self = (RenderPrimitiveLighting *)data;
     x = state->x, y = state->y, z = state->z;
     
-    if ((state->block == 8) || (state->block == 9)) { /* special case for water */
+    if (block_class_is_subset(state->block, (mc_block_t[]){block_flowing_water,block_water}, 2)) { /* special case for water */
         /* looks like we need a new case for lighting, there are
          * blocks that are transparent for occlusion calculations and
          * need per-face shading if the face is drawn. */

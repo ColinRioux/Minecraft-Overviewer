@@ -16,6 +16,7 @@
  */
 
 #include "../overviewer.h"
+#include "../mc_id.h"
 
 struct HideRule {
     unsigned short blockid;
@@ -52,9 +53,9 @@ hide_start(void *data, RenderState *state, PyObject *support) {
         for (i = 0; i < blocks_size; i++) {
             PyObject *block = PyList_GET_ITEM(opt, i);
             
-            if (PyInt_Check(block)) {
+            if (PyLong_Check(block)) {
                 /* format 1: just a block id */
-                self->rules[i].blockid = PyInt_AsLong(block);
+                self->rules[i].blockid = PyLong_AsLong(block);
                 self->rules[i].has_data = 0;
             } else if (PyArg_ParseTuple(block, "Hb", &(self->rules[i].blockid), &(self->rules[i].data))) {
                 /* format 2: (blockid, data) */
@@ -90,7 +91,7 @@ hide_hidden(void *data, RenderState *state, int x, int y, int z) {
         return 0;
     
     block = get_data(state, BLOCKS, x, y, z);
-    for (i = 0; self->rules[i].blockid != 0; i++) {
+    for (i = 0; self->rules[i].blockid != block_air; i++) {
         if (block == self->rules[i].blockid) {
             unsigned char data;
             
