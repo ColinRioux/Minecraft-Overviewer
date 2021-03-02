@@ -98,7 +98,7 @@ class NBTFileReader(object):
             9: self._read_tag_list,
             10:self._read_tag_compound,
             11:self._read_tag_int_array,
-            12: self._read_tag_long_array,
+            # 12: self._read_tag_long_array,
         }
 
     # These private methods read the payload only of the following types

@@ -357,7 +357,6 @@ class RegionSet(object):
         chunk.
         """
         regionfile = self._get_region_path(x, z)
-        print("COLIN : REGION PATH IN QUESTION " + str(regionfile))
         if regionfile is None:
             raise ChunkDoesntExist("Chunk %s,%s doesn't exist (and neither does its region)" % (x,z))
 
