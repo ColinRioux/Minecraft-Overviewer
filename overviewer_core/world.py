@@ -414,10 +414,10 @@ class RegionSet(object):
         chunk_data['Biomes'] = biomes
 
         for section in chunk_data['Sections']:
-            print("COLIN ", section)
+
             # Turn the Blocks array into a 16x16x16 numpy matrix of shorts,
             # adding in the additional block array if included.
-            blocks = numpy.frombuffer(section['Blocks'], dtype=numpy.uint8)
+            blocks = numpy.frombuffer(numpy.asarray(section['Blocks']), dtype=numpy.uint8)
             # Cast up to uint16, blocks can have up to 12 bits of data
             blocks = blocks.astype(numpy.uint16)
             blocks = blocks.reshape((16,16,16))
